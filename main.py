@@ -12,7 +12,7 @@ from icalendar import Calendar, Event, Alarm
 
 app = Flask(__name__)
 cache = Cache(app, config={'CACHE_TYPE': 'simple'})
-cache_timeout = 60 * 60 * 24 * 7 # 7 days
+cache_timeout = 60 * 60 * 24 * 7  # 7 days
 
 
 @app.route('/')
@@ -24,6 +24,7 @@ def hello():
 @app.route('/<plan_id>.ics')
 @cache.cached(timeout=cache_timeout)
 def fetch_plan(plan_id):
+    wd = request.args.get('wd', default=None, type=int)
     url = 'https://trv.no/plan/{0}/'.format(plan_id)
     page = requests.get(url).text
 
@@ -70,6 +71,15 @@ def fetch_plan(plan_id):
             end_month = int(end[1])
             end_day = int(end[0])
 
+            # 0=Monday, 4=Friday
+            start_time = None
+            end_time = None
+            if wd in range(0, 4):
+                start_time = datetime(
+                    start_year, start_month, start_day, 0, 0) + timedelta(days=wd)
+                end_time = datetime(start_year, start_month,
+                                    start_day, 0, 0) + timedelta(days=wd+1)
+
             # we need to check if start month is end of year and end month is start of year
             # if this is the case we need to add a year to end_year
             # this happends when end month is on a new year
@@ -80,8 +90,15 @@ def fetch_plan(plan_id):
             e.add('description', trv_type)
             e.add('uid', str(uuid.uuid4()))
             e.add('summary', trv_type)
-            e.add('dtstart', datetime(start_year, start_month, start_day).date())
-            e.add('dtend', datetime(end_year, end_month, end_day).date() - timedelta(days=1))
+            if start_time and end_time:
+                e.add('dtstart', start_time.date())
+                e.add('dtend', end_time.date())
+            else:
+                e.add('dtstart', datetime(start_year,
+                                          start_month, start_day).date())
+                e.add('dtend', datetime(end_year, end_month,
+                                        end_day).date() - timedelta(days=1))
+
             e.add('dtstamp', datetime.now())
 
             if week_type == 'tommefri-uke':
@@ -91,7 +108,8 @@ def fetch_plan(plan_id):
 
             a = Alarm()
             a.add('action', 'display')
-            a.add('trigger', datetime(start_year, start_month, start_day) - timedelta(hours=4))
+            a.add('trigger', datetime(start_year, start_month,
+                                      start_day) - timedelta(hours=4))
             a.add('description', desc)
             e.add_component(a)
 
